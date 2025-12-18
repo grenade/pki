@@ -1,0 +1,217 @@
+# config/example.yml
+#
+# This file is intentionally generic. Copy it to config/<deployment>.yml and
+# replace placeholder names, IPs, users, and hostnames.
+#
+# Conventions:
+# - Canonical host identity: <hostname>.<site>.internal
+# - iLO identity: ilo-<hostname>.<site>.internal
+# - All PEM files use *.pem extensions with role-encoded names
+
+version: 1
+
+global:
+  internal_suffix: internal
+
+  ca:
+    # Smallstep CA endpoint (prefer 443 for default-like behavior)
+    url: "https://ca.internal"
+    # X.509 Root CA certificate (PEM) used by step clients for bootstrap and OS trust
+    root_ca_pem: "assets/ca/root-ca-cert.pem"
+
+    # Optional: intermediate/issuer cert for chain construction if you keep it separately.
+    # If omitted, scripts may build ca-chain-cert.pem using root only.
+    issuer_ca_pem: "assets/ca/issuer-ca-cert.pem"
+
+    # Step provisioners used by scripts
+    provisioners:
+      x509_hosts: "hosts-jwk"
+      ssh_hosts: "ssh-hosts-jwk"
+      ssh_users: "ssh-users-jwk"
+
+  tls:
+    # Default host certificate policy
+    host_cert:
+      key_type: "ecdsa-p256"          # preferred
+      eku: ["serverAuth", "clientAuth"]
+      san_include_short_hostname: true
+      san_include_ip_if_stable: true
+      # target TTL and renewal behavior (scripts enforce “renew before expiry”)
+      ttl_days: 90
+      renew_check: "daily"
+
+    file_layout:
+      dir: "/etc/pki/hosts"
+      host_key_pem: "host-key.pem"
+      host_cert_pem: "host-cert.pem"
+      ca_chain_pem: "ca-chain-cert.pem"
+
+    os_trust:
+      fedora_anchor_dir: "/etc/pki/ca-trust/source/anchors"
+      ubuntu_anchor_dir: "/usr/local/share/ca-certificates"
+      update_commands:
+        fedora: ["update-ca-trust"]
+        ubuntu: ["update-ca-certificates"]
+
+  ssh:
+    # Trust scope for SSH host certificates (cross-site SSH => *.internal)
+    host_ca_trust_scope: "*.internal"
+
+    # SSH user cert TTL (the “lost laptop” mitigation knob)
+    user_cert_ttl_hours: 4
+
+    # SSH host cert TTL and host key rotation cadence
+    host_cert_ttl_hours: 48          # 24–72h typical
+    host_key_rotation_days: 60       # 30–90d typical
+
+    # Standard OpenSSH paths (override per-host if needed)
+    server_paths:
+      sshd_config: "/etc/ssh/sshd_config"
+      trusted_user_ca_pub: "/etc/ssh/ssh_user_ca.pub"
+      host_key: "/etc/ssh/ssh_host_ed25519_key"
+      host_key_pub: "/etc/ssh/ssh_host_ed25519_key.pub"
+      host_cert_pub: "/etc/ssh/ssh_host_ed25519_key-cert.pub"
+      authorized_principals_dir: "/etc/ssh/auth_principals"
+
+    # Workstation/client-side known_hosts management
+    client_known_hosts:
+      file: "~/.ssh/known_hosts"
+      managed_marker: "managed-by-grenade-pki"
+
+reconciliation:
+  # Workstation-driven SSH access to targets
+  ssh:
+    default_user: "ops"
+    port: 22
+    connect_timeout_seconds: 8
+    # Optional: jump/bastion defaults; can be overridden per-site
+    proxy_jump: null
+
+  # How aggressively to fix vs. warn
+  mode_defaults:
+    verify_only: false
+    fail_on_drift: false
+    apply_changes: true
+
+  # Which services to reload when TLS cert changes on a host
+  reload_units_on_tls_change:
+    - "nginx.service"
+    # - "postgresql.service"
+    # - "your-rust-daemon.service"
+
+  # Which services to reload when SSH host cert changes
+  reload_units_on_ssh_change:
+    - "sshd.service"
+
+sites:
+  # Each site defines DNS suffix, subnet, and optionally a bastion/jump host.
+  - name: "exampledc"
+    subnet: "10.3.0.0/16"
+    suffix: "exampledc.internal"
+    dns:
+      # Optional: authoritative resolver(s) for this site (if scripts validate DNS)
+      resolvers: ["10.3.0.1"]
+    access:
+      # Optional per-site jump host
+      proxy_jump: null
+
+    routers:
+      # OPNsense management endpoints for this site
+      - name: "opnsense1"
+        mgmt_fqdn: "router1.exampledc.internal"
+        mgmt_ip: "10.3.0.1"
+        type: "opnsense"
+        tls:
+          # Whether this endpoint should be brought under internal CA management
+          manage_cert: true
+          # Many appliances prefer RSA for maximum compatibility
+          key_type: "rsa-2048"
+          # Desired TLS identity
+          san:
+            - "router1.exampledc.internal"
+            - "10.3.0.1"
+        ssh:
+          manage_ssh_ca: true
+
+    hosts:
+      - hostname: "db01"
+        fqdn: "db01.exampledc.internal"
+        ip: "10.3.12.42"
+        os:
+          family: "fedora"
+          version: 42
+        roles: ["db", "infra"]
+        tls:
+          manage: true
+          # Optional overrides
+          san:
+            include_short: true
+            include_ip: true
+        ssh:
+          manage_host_cert: true
+        ilo:
+          # If absent, scripts treat iLO as not present for this host.
+          present: true
+          fqdn: "ilo-db01.exampledc.internal"
+          ip: "10.3.12.240"
+          generation: "ilo4"     # ilo3 | ilo4 | ilo5
+          strategy: "track"      # manage | track | contain
+          tls:
+            manage_cert: false    # usually true for ilo5, sometimes for late ilo4
+            key_type: "rsa-2048"
+
+      - hostname: "web01"
+        fqdn: "web01.exampledc.internal"
+        ip: "10.3.20.10"
+        os:
+          family: "ubuntu"
+          version: 24
+        roles: ["nginx-edge"]
+        tls:
+          manage: true
+        ssh:
+          manage_host_cert: true
+        ilo:
+          present: false
+
+users:
+  # Operators/users allowed to mint SSH user certs (policy is enforced by scripts + CA provisioners)
+  - name: "alice"
+    principals: ["alice", "ops"]
+    # Optional constraints for authorization mapping (e.g., sites allowed)
+    allowed_sites: ["exampledc"]
+    ssh:
+      key_paths:
+        private_key: "~/.ssh/id_ed25519"
+        public_key: "~/.ssh/id_ed25519.pub"
+      # Optional: enforce hardware-backed keys in future
+      require_hardware_key: false
+
+  - name: "breakglass"
+    principals: ["breakglass"]
+    allowed_sites: ["exampledc"]
+    ssh:
+      key_paths:
+        private_key: "~/.ssh/breakglass_ed25519"
+        public_key: "~/.ssh/breakglass_ed25519.pub"
+      require_hardware_key: false
+
+legacy:
+  ilo:
+    # Global rules for iLO handling
+    naming_prefix: "ilo-"
+    # Default strategy by generation
+    defaults_by_generation:
+      ilo5: "manage"
+      ilo4: "track"
+      ilo3: "contain"
+    containment_controls:
+      - "Management VLAN only"
+      - "VPN/bastion access only"
+      - "Firewall restrict to admin subnets"
+      - "Accept/pin self-signed if unavoidable"
+
+  opnsense:
+    # Notes / toggles specific to OPNsense automation
+    prefer_rsa_for_ui_tls: true
+    track_expiry_days: 30
