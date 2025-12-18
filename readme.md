@@ -1,4 +1,7 @@
-# Infrastructure PKI & SSH Strategy
+# PKI & SSH Strategy
+
+Repository: `https://github.com/grenade/pki`
+
 
 This repository documents and enforces the **infrastructure-wide certificate and SSH trust strategy** used across all sites, hosts, and management endpoints.
 
@@ -285,9 +288,36 @@ This avoids breaking legacy software while keeping a clear migration path.
 
 ---
 
-## 9. Reconciliation model (this repository)
+## 9. Repository layout and configuration
 
-This repository is the **source of truth**.
+This repository is the **source of truth** and is operated using a reconciliation model.
+
+### 9.1 Configuration-first deployments
+
+All environment-specific details (sites, hosts, users, CA endpoint, per-OS paths) live in YAML under `config/`.
+
+- `config/example.yml` contains **generic placeholders** and serves as documentation.
+- `config/<deployment>.yml` contains your **real environment data**.
+
+Examples:
+
+- `config/example.yml`
+- `config/my-bansko-infra.yml`
+
+Deployment and verification scripts must:
+
+- Require an explicit config file argument (no hidden defaults)
+- Treat the config as authoritative
+- Make changes only to targets referenced by the config
+
+Recommended CLI pattern:
+
+```bash
+./scripts/verify --config config/example.yml
+./scripts/reconcile --config config/my-bansko-infra.yml --site kosherinata
+```
+
+### 9.2 Reconciliation model
 
 Scripts are designed to be run from a trusted workstation over SSH to:
 
