@@ -14,6 +14,12 @@ global:
   internal_suffix: internal
 
   ca:
+    name: "internal-ca"
+    dns_names:
+      - "ca.internal"
+      - "ca.example-site.internal"
+    port: 443
+
     # Smallstep CA endpoint (prefer 443 for default-like behavior)
     url: "https://ca.internal"
     # X.509 Root CA certificate (PEM) used by step clients for bootstrap and OS trust
@@ -22,6 +28,10 @@ global:
     # Optional: intermediate/issuer cert for chain construction if you keep it separately.
     # If omitted, scripts may build ca-chain-cert.pem using root only.
     issuer_ca_pem: "assets/ca/issuer-ca-cert.pem"
+
+    token_mint_host: "ca.internal"
+    token_mint_user: "ops"
+    token_mint_root_crt: "/etc/step-ca/certs/root_ca.crt"
 
     # Step provisioners used by scripts
     provisioners:
@@ -32,7 +42,7 @@ global:
   tls:
     # Default host certificate policy
     host_cert:
-      key_type: "ecdsa-p256"          # preferred
+      key_type: "ecdsa-p256" # preferred
       eku: ["serverAuth", "clientAuth"]
       san_include_short_hostname: true
       san_include_ip_if_stable: true
@@ -61,8 +71,8 @@ global:
     user_cert_ttl_hours: 4
 
     # SSH host cert TTL and host key rotation cadence
-    host_cert_ttl_hours: 48          # 24–72h typical
-    host_key_rotation_days: 60       # 30–90d typical
+    host_cert_ttl_hours: 48 # 24–72h typical
+    host_key_rotation_days: 60 # 30–90d typical
 
     # Standard OpenSSH paths (override per-host if needed)
     server_paths:
@@ -154,10 +164,10 @@ sites:
           present: true
           fqdn: "ilo-db01.exampledc.internal"
           ip: "10.3.12.240"
-          generation: "ilo4"     # ilo3 | ilo4 | ilo5
-          strategy: "track"      # manage | track | contain
+          generation: "ilo4" # ilo3 | ilo4 | ilo5
+          strategy: "track" # manage | track | contain
           tls:
-            manage_cert: false    # usually true for ilo5, sometimes for late ilo4
+            manage_cert: false # usually true for ilo5, sometimes for late ilo4
             key_type: "rsa-2048"
 
       - hostname: "web01"

@@ -302,7 +302,6 @@ All environment-specific details (sites, hosts, users, CA endpoint, per-OS paths
 Examples:
 
 - `config/example.yml`
-- `config/my-bansko-infra.yml`
 
 Deployment and verification scripts must:
 
@@ -314,7 +313,7 @@ Recommended CLI pattern:
 
 ```bash
 ./scripts/verify --config config/example.yml
-./scripts/reconcile --config config/my-bansko-infra.yml --site kosherinata
+./scripts/verify --config config/example.yml --site site-name
 ```
 
 ### 9.2 Reconciliation model
@@ -353,4 +352,3 @@ Changes should:
 If a system cannot be made compliant, it must be **intentionally non‑compliant and documented**.
 
 That clarity is what keeps the infrastructure sane over time.
-
