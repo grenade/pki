@@ -252,18 +252,19 @@ chmod -R go-rwx /etc/step-ca/secrets || true
 
         # 3) Ensure provisioners exist (idempotent)
         # Add the provisioners your scripts assume.
-        prov_cmd = r"""
+        prov_cmd = f"""
 set -euo pipefail
 export STEPPATH=/etc/step-ca
+export STEP_CA_URL={shquote(ca_url)}
 
 PASS=/etc/step-ca/secrets/password
 
 test -f /etc/step-ca/config/ca.json
 
-ensure_prov () {
+ensure_prov () {{
   local name="$1"
   local extra="$2"
-  if step ca provisioner list --ca-url {ca_url} --root /etc/step-ca/certs/root_ca.crt | jq -r '.[].name' | grep -Fxq "$name"; then
+  if step ca provisioner list --ca-url "$STEP_CA_URL" --root /etc/step-ca/certs/root_ca.crt | jq -r '.[].name' | grep -Fxq "$name"; then
     echo "provisioner-exists:$name"
   else
     # Create JWK provisioner with minimal defaults.
@@ -271,7 +272,7 @@ ensure_prov () {
     step ca provisioner add "$name" --type JWK --create --password-file "$PASS" $extra
     echo "provisioner-added:$name"
   fi
-}
+}}
 
 # For host TLS tokens / enrollment
 ensure_prov "hosts-jwk" ""
